@@ -1,6 +1,10 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
+// Determine which environment we're in
+const environment = process.env.NODE_ENV || 'development';
+console.log(`📊 Running in ${environment} mode`);
+
 console.log('📊 Database Config:');
 console.log('Host:', process.env.DB_HOST);
 console.log('Port:', process.env.DB_PORT);  // Should show 3036
@@ -16,12 +20,21 @@ const pool = mysql.createPool({
     waitForConnections: true,
     connectionLimit: 5,
     queueLimit: 0,
+     // Add SSL for production (Aiven requires it)
+    ...(process.env.NODE_ENV === 'production' && {
+        ssl: {
+            rejectUnauthorized: false
+        }
+    })
 });
 
 (async () => {
     try {
-        const connection = await pool.getConnection();
+        const connection = await pool.getConnection(); 
         console.log('✅ MySQL connected successfully!');
+        console.log(`📊 Connected to: ${process.env.DB_NAME}`);
+        console.log(`🌐 Environment: ${environment}`);
+        connection.release();
         connection.release();
     } catch (error) {
         console.error('❌ MySQL connection failed:', error.message);
