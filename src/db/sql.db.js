@@ -1,52 +1,52 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-// Determine which environment we're in
 const environment = process.env.NODE_ENV || 'development';
-console.log(`Running in ${environment} mode`);
+console.log(`📊 Running in ${environment} mode`);
 
-console.log('Database Config:');
-console.log('Host:', process.env.DB_HOST);
-console.log('Port:', process.env.DB_PORT);  // Should show 3036
-console.log('User:', process.env.DB_USER);
-console.log('Database:', process.env.DB_NAME);
-
-const config = mysql.createPool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    port: parseInt(process.env.DB_PORT) || 3306, 
+// Build config
+const config = {
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'campus_navigator',
+    port: parseInt(process.env.DB_PORT) || 3306,
     waitForConnections: true,
     connectionLimit: 5,
     queueLimit: 0,
+};
 
-});
-
+// SSL only for production (Aiven requires it)
 if (environment === 'production') {
     config.ssl = {
-        rejectUnauthorized: false  // Required for Aiven
+        rejectUnauthorized: false
     };
-    console.log('SSL enabled for production');
+    console.log('🔒 SSL enabled');
 }
 
-const pool = mysql.createConnection(config);
+console.log('📊 Host:', config.host);
+console.log('📊 Port:', config.port);
+console.log('📊 Database:', config.database);
 
-(async () => {
+// Create pool
+let pool;
+try {
+    pool = mysql.createPool(config);
+    console.log('✅ Pool created successfully');
+} catch (error) {
+    console.error('❌ Failed to create pool:', error.message);
+    process.exit(1);
+}
+
+// Test connection
+(async function testConnection() {
     try {
-        const connection = await pool.getConnection(); 
+        const connection = await pool.getConnection();
         console.log('✅ MySQL connected successfully!');
-        console.log(`📊 Connected to: ${process.env.DB_NAME}`);
-        console.log(`🌐 Environment: ${environment}`);
-        connection.release();
         connection.release();
     } catch (error) {
         console.error('❌ MySQL connection failed:', error.message);
-        console.error('Please check:');
-        console.error('1. DB_HOST:', process.env.DB_HOST);
-        console.error('2. DB_PORT:', process.env.DB_PORT);
-        console.error('3. DB_USER:', process.env.DB_USER);
-        console.error('4. DB_NAME:', process.env.DB_NAME);
+        console.error('💡 Check your database credentials');
     }
 })();
 
