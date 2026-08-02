@@ -3,30 +3,34 @@ require('dotenv').config();
 
 // Determine which environment we're in
 const environment = process.env.NODE_ENV || 'development';
-console.log(`📊 Running in ${environment} mode`);
+console.log(`Running in ${environment} mode`);
 
-console.log('📊 Database Config:');
+console.log('Database Config:');
 console.log('Host:', process.env.DB_HOST);
 console.log('Port:', process.env.DB_PORT);  // Should show 3036
 console.log('User:', process.env.DB_USER);
 console.log('Database:', process.env.DB_NAME);
 
-const pool = mysql.createPool({
+const config = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-    port: parseInt(process.env.DB_PORT) || 3306,  // ✅ Use DB_PORT, not PORT!
+    port: parseInt(process.env.DB_PORT) || 3306, 
     waitForConnections: true,
     connectionLimit: 5,
     queueLimit: 0,
-     // Add SSL for production (Aiven requires it)
-    ...(process.env.NODE_ENV === 'production' && {
-        ssl: {
-            rejectUnauthorized: false
-        }
-    })
+
 });
+
+if (environment === 'production') {
+    config.ssl = {
+        rejectUnauthorized: false  // Required for Aiven
+    };
+    console.log('SSL enabled for production');
+}
+
+const pool = mysql.createConnection(config);
 
 (async () => {
     try {
