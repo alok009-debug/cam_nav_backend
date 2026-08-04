@@ -1,7 +1,6 @@
 const jwt = require('jsonwebtoken');
 
 module.exports = (req, res, next) => {
-  // ✅ FIXED: Correct spelling: 'authorization'
   const authHeader = req.headers.authorization;
   
   if (!authHeader) {

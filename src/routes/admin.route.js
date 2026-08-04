@@ -13,8 +13,8 @@ router.get("/profile", auth, authController.getProfile);
 
 
 router.post("/locations", auth, locController.createLocation);
-router.get("/locations/:id", auth, locController.getLocationById);
 router.get("/locations", auth, locController.getAllLocations);
+router.get("/locations/:id", auth, locController.getLocationById);
 router.put("/location/:id", auth, locController.updateLocation);
 router.delete("/locations/:id", auth, locController.deleteLocation);
 

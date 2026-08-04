@@ -3,17 +3,22 @@ const pool = require('../db/sql.db');
 
 // Fetching all locations
 const getAllLocations = async (req, res) => {
+    const { admin_id } = req.query;
     try {
 
-        console.log("fetching locations data");
+        console.log("fetching locations data of admin id: ",admin_id);
 
         const [rows] = await pool.query(
-            `SELECT * FROM locations ORDER BY locId DESC`
+            `SELECT * 
+            FROM locations
+            WHERE admin_id = ?
+            ORDER BY locId DESC`,
+            [admin_id]
         );
 
         console.log('Locations found:', rows.length); // Debug log
-        console.log('First location:', rows[0]); // Debug log
-        res.json(rows);
+
+        res.status(200).json(rows);
     } catch (error) {
         console.error("Error fetching locations", error);
         res.status(500).json({ error: "error in featching locations" });
@@ -22,9 +27,21 @@ const getAllLocations = async (req, res) => {
 
 // ==========get Public locations for dropdown ==========
 const getPublicLocations = async (req, res) => {
+    // const { admin_id } = req.body;
     try {
         const [rows] = await pool.query(
-            'SELECT locId, name, building, latitude, longitude FROM locations ORDER BY name'
+
+            // send all campus locations
+            `SELECT locId, name , building, latitude, longitude
+            FROM locations
+            ORDER BY name`
+
+            // send only specific campus locations 
+            // `SELECT locId, name, building, latitude, longitude 
+            // FROM locations
+            // admin_id
+            // ORDER BY name`,
+            // [admin_id]
         );
         res.json(rows);
 
@@ -65,13 +82,18 @@ const getLocationById = async (req, res) => {
     }
 }
 
+// ================Get locations by admin id========================
+
+// const getLocationByAdminId
+
 // ===========creating locations===============
 const createLocation = async (req, res) => {
     try {
-        const { name, latitude, longitude, floor, is_indoor, building, description } = req.body;
 
-        if (!name || latitude === undefined || longitude === undefined) {
-            return res.status(400).json({ error: "locations Name, Latitude, Longitude are required" })
+        const { name, admin_id, latitude, longitude, floor, is_indoor, building, description } = req.body;
+
+        if (!name || !admin_id || latitude === undefined || longitude === undefined) {
+            return res.status(400).json({ error: "locations Name, admin id,  Latitude, Longitude are required" })
         }
 
         // checking existing locations to avoid duplicates
@@ -89,9 +111,9 @@ const createLocation = async (req, res) => {
         }
 
         const [result] = await pool.query(
-            `INSERT INTO locations (name, latitude, longitude, floor, is_indoor, building, description)
-        VALUES (?,?,?,?,?,?,?)`,
-            [name, latitude, longitude, floor || null, is_indoor || false, building || null, description || null]
+            `INSERT INTO locations (name, admin_id, latitude, longitude, floor, is_indoor, building, description)
+        VALUES (?,?,?,?,?,?,?,?)`,
+            [name, admin_id, latitude, longitude, floor || null, is_indoor || false, building || null, description || null]
         )
 
         const [newLocation] = await pool.query(
@@ -118,8 +140,8 @@ const updateLocation = async (req, res) => {
 
         const [result] = await pool.query(
             `UPDATE locations
-        SET name = ?, latitude=?, longitude=?, floor=?, is_indoor=?, building=?, description=?
-        WHERE locId =?`,
+            SET name = ?, latitude=?, longitude=?, floor=?, is_indoor=?, building=?, description=?
+            WHERE locId =?`,
             [name, latitude, longitude, floor || null, is_indoor || false, building || null, description || null, id]
         );
 
