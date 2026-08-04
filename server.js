@@ -1,13 +1,11 @@
 require('dotenv').config();
 const app = require("./src/app");
 
-
-
 const environment = process.env.NODE_ENV || 'development';
 const PORT = process.env.PORT || 3000;
 
-console.log(`🌐 Environment: ${environment}`);
-console.log(`🔌 Running on port: ${PORT}`);
+console.log(`Environment: ${environment}`);
+console.log(`Running on port: ${PORT}`);
 
 
 const pool = require('./src/db/sql.db');
@@ -19,7 +17,7 @@ app.get('/', (req, res) => {
 
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
 
 // Handle graceful shutdown

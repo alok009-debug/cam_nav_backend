@@ -24,7 +24,7 @@ const signUp = async (req, res) => {
         const [result] = await pool.query(
             `INSERT INTO admins (username, email, phone ,password_hash, fullname)
         VALUES(?,?,?,?,?)`,
-            [username, email, phone || null, hashedPassword, fullname || null]
+            [username, email, phone || null, hashedPassword, fullname || username]
         );
 
         res.status(201).json({
@@ -114,14 +114,14 @@ const getProfile = async (req, res) => {
 const getAllAdmins = async (req, res) => {
     try {
         const [rows] = await pool.query(
-            `SELECT adminId, username, fullname, email, phone, created_at FROM admins`
+            `SELECT admin_id, username, fullname, email, phone, created_at FROM admins`
         );
 
         if (rows.length === 0) {
             console.error("admin table is empty", error)
         }
 
-        res.json(rows);
+        res.send(rows);
     } catch (error) {
 
         console.error('Error fetching admins:', error);

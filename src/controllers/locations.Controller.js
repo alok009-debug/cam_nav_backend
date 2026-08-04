@@ -74,7 +74,6 @@ const createLocation = async (req, res) => {
             return res.status(400).json({ error: "locations Name, Latitude, Longitude are required" })
         }
 
-
         // checking existing locations to avoid duplicates
         const [existing] = await pool.query(
             'SELECT locId, name FROM locations WHERE latitude = ? AND longitude = ?',
