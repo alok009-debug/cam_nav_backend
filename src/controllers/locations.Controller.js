@@ -140,9 +140,9 @@ const updateLocation = async (req, res) => {
 
         const [result] = await pool.query(
             `UPDATE locations
-            SET name = ?, latitude=?, longitude=?, floor=?, is_indoor=?, building=?, description=?
+            SET name = ?, floor=?, is_indoor=?, building=?, description=?
             WHERE locId =?`,
-            [name, latitude, longitude, floor || null, is_indoor || false, building || null, description || null, id]
+            [name, floor || null, is_indoor || false, building || null, description || null, id]
         );
 
         if (result.affectedRows === 0) {
