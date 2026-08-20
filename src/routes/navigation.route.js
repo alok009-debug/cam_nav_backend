@@ -1,12 +1,19 @@
 const express = require('express');
 const { validateQR} = require('../controllers/qrCodes.controller')
 const { getPublicLocations } = require('../controllers/locations.Controller');
+const {getTextDirections}= require('../controllers/navigation.controller');
+const {shortestPath} = require('../controllers/shortestPath.controller')
 const router = express.Router();
 
 // ============ PUBLIC ROUTES ============
 
 // Get all locations (for dropdown)
 router.get('/locations', getPublicLocations);
+
+// Public: Get text directions (for testing)
+router.get('/directions', getTextDirections);
+
+router.post('/shortest-path', shortestPath);
 
 // ✅ Validate QR code - This is what your frontend calls
 router.post('/validate-qr', validateQR);
