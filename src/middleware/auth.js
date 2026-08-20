@@ -20,12 +20,12 @@ module.exports = (req, res, next) => {
 
   try {
     // Verify the token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'campus-nav-secret');
+
     // Attach admin info to request object
     req.adminId = decoded.adminId;
     req.adminUsername = decoded.username;
-    
+
     // Continue to the next middleware/route handler
     next();
   } catch (error) {

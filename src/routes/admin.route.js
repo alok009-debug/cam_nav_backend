@@ -4,7 +4,7 @@ const authController = require('../controllers/auth.Controller');
 const locController = require('../controllers/locations.Controller');
 const qrCode = require('../controllers/qrCodes.controller');
 
-const router = express();
+const router = express.Router();
 
 router.post("/login", authController.login);
 router.post("/signup", authController.signUp);

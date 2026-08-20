@@ -10,20 +10,26 @@ const signUp = async (req, res) => {
         const { username, email, phone, password, fullname } = req.body;
         if (!username || !email || !password) {
             return res.status(400).json({
-                error: "username , email, password is required"
-            })
+                error: "username, email, and password are required"
+            });
         }
 
-        const [existingUser] = await pool.query(' SELECT username, email FROM admins WHERE username = ? OR email =? ',
+        const [existingUsers] = await pool.query(
+            'SELECT username, email FROM admins WHERE username = ? OR email = ?',
             [username, email]
         );
-        const hashSalt = 10;
-        const hashedPassword = await bcrypt.hash(password, hashSalt);
 
+        if (existingUsers.length > 0) {
+            return res.status(409).json({
+                error: 'Username or email already exists'
+            });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
 
         const [result] = await pool.query(
-            `INSERT INTO admins (username, email, phone ,password_hash, fullname)
-        VALUES(?,?,?,?,?)`,
+            `INSERT INTO admins (username, email, phone, password_hash, fullname)
+             VALUES (?, ?, ?, ?, ?)`,
             [username, email, phone || null, hashedPassword, fullname || username]
         );
 
@@ -31,13 +37,12 @@ const signUp = async (req, res) => {
             success: true,
             message: 'Admin created successfully',
             adminId: result.insertId
-        })
+        });
     } catch (error) {
-        console.error("sign Up error", error);
-        res.status(500).json({ error: "Failed to create admin account" })
+        console.error('Sign up error', error);
+        res.status(500).json({ error: 'Failed to create admin account' });
     }
-
-}
+};
 
 const login = async (req, res) => {
     try {
@@ -69,7 +74,7 @@ const login = async (req, res) => {
         // generate jwt
         const token = jwt.sign(
             { adminId: admin.admin_id, username: admin.username },
-            process.env.JWT_SECRET,
+            process.env.JWT_SECRET || 'campus-nav-secret',
             { expiresIn: '7h' }
         );
 
@@ -118,16 +123,15 @@ const getAllAdmins = async (req, res) => {
         );
 
         if (rows.length === 0) {
-            console.error("admin table is empty", error)
+            console.warn('Admin table is empty');
         }
 
         res.send(rows);
     } catch (error) {
-
         console.error('Error fetching admins:', error);
         res.status(500).json({ error: 'Failed to fetch admins' });
     }
-}
+};
 
 
 module.exports = {

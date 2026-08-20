@@ -135,14 +135,14 @@ const updateLocation = async (req, res) => {
         const { name, latitude, longitude, floor, is_indoor, building, description } = req.body;
 
         if (!name || latitude === undefined || longitude === undefined) {
-            return res.status(400).json({ error: "locations Name, Latitude, Longitude are required" })
+            return res.status(400).json({ error: "Location name, latitude, and longitude are required" });
         }
 
         const [result] = await pool.query(
             `UPDATE locations
-            SET name = ?, floor=?, is_indoor=?, building=?, description=?
-            WHERE locId =?`,
-            [name, floor || null, is_indoor || false, building || null, description || null, id]
+             SET name = ?, latitude = ?, longitude = ?, floor = ?, is_indoor = ?, building = ?, description = ?
+             WHERE locId = ?`,
+            [name, latitude, longitude, floor || null, is_indoor || false, building || null, description || null, id]
         );
 
         if (result.affectedRows === 0) {
@@ -150,14 +150,13 @@ const updateLocation = async (req, res) => {
         }
 
         const [updatedLocation] = await pool.query(
-            `select * from locations where locId = ?`,
+            `SELECT * FROM locations WHERE locId = ?`,
             [id]
         );
 
-        res.json(updateLocation[0]);
+        res.json(updatedLocation[0]);
 
     } catch (error) {
-
         console.error('Error updating location:', error);
         res.status(500).json({ error: 'Failed to update location' });
     }
