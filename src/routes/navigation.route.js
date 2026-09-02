@@ -1,6 +1,6 @@
 const express = require('express');
 const { validateQR} = require('../controllers/qrCodes.controller')
-const { getPublicLocations } = require('../controllers/locations.Controller');
+const { getPublicLocations, getAllLocations, getAllLocationsByAdminID } = require('../controllers/locations.Controller');
 const {getTextDirections}= require('../controllers/navigation.controller');
 const {shortestPath} = require('../controllers/shortestPath.controller')
 const router = express.Router();
@@ -8,7 +8,8 @@ const router = express.Router();
 // ============ PUBLIC ROUTES ============
 
 // Get all locations (for dropdown)
-router.get('/locations', getPublicLocations);
+router.get('/locations', getAllLocationsByAdminID);
+router.get('/all-locations', getAllLocations);
 
 // Public: Get text directions (for testing)
 router.get('/directions', getTextDirections);

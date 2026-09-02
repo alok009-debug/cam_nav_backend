@@ -1,12 +1,10 @@
 const pool = require('../db/sql.db');
 
-
-// Fetching all locations
-const getAllLocations = async (req, res) => {
+const getAllLocationsByAdminID = async (req, res) => {
     const { admin_id } = req.query;
     try {
 
-        console.log("fetching locations data of admin id: ",admin_id);
+        console.log("fetching locations data of admin id: ", admin_id);
 
         const [rows] = await pool.query(
             `SELECT * 
@@ -25,31 +23,48 @@ const getAllLocations = async (req, res) => {
     }
 }
 
-// ==========get Public locations for dropdown ==========
-const getPublicLocations = async (req, res) => {
-    // const { admin_id } = req.body;
+// ============Featch all locations=============
+const getAllLocations = async (req, res) => {
     try {
         const [rows] = await pool.query(
-
-            // send all campus locations
-            `SELECT locId, name , building, latitude, longitude
-            FROM locations
-            ORDER BY name`
-
-            // send only specific campus locations 
-            // `SELECT locId, name, building, latitude, longitude 
-            // FROM locations
-            // admin_id
-            // ORDER BY name`,
-            // [admin_id]
+            'SELECT locId, name, latitude, longitude, building, admin_id FROM locations ORDER BY name'
         );
         res.json(rows);
-
     } catch (error) {
-        console.error("failed to fetch public locations", error);
-        res.status(500).json({ error: "Failed to fetch Public locations" });
+        console.error('Error fetching all locations:', error);
+        res.status(500).json({ error: 'Failed to fetch locations' });
     }
 }
+
+// ============ GET PUBLIC LOCATIONS ============
+const getPublicLocations = async (req, res) => {
+    const { admin_id } = req.query;
+
+    try {
+        // Build the base query
+        let query = 'SELECT locId, name, latitude, longitude, building, admin_id FROM locations';
+        let params = [];
+
+        // Add WHERE clause if admin_id is provided
+        if (admin_id) {
+            query += ' WHERE admin_id = ?';
+            params.push(admin_id);
+        }
+
+        // ✅ Add ORDER BY only once
+        query += ' ORDER BY name';
+
+        console.log('📊 SQL Query:', query);
+        console.log('📊 Params:', params);
+
+        const [rows] = await pool.query(query, params);
+        return res.json(rows);
+
+    } catch (error) {
+        console.error("Failed to fetch public locations:", error);
+        return res.status(500).json({ error: "Failed to fetch Public locations" });
+    }
+};
 
 // ===========get locations by id===============
 
@@ -81,10 +96,6 @@ const getLocationById = async (req, res) => {
         res.status(500).json({ error: "cant fetch location" });
     }
 }
-
-// ================Get locations by admin id========================
-
-// const getLocationByAdminId
 
 // ===========creating locations===============
 const createLocation = async (req, res) => {
@@ -192,6 +203,7 @@ const deleteLocation = async (req, res) => {
 
 module.exports = {
     getAllLocations,
+    getAllLocationsByAdminID,
     getPublicLocations,
     getLocationById,
     createLocation,
