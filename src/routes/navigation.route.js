@@ -16,7 +16,6 @@ router.get('/directions', getTextDirections);
 
 router.post('/shortest-path', shortestPath);
 
-// ✅ Validate QR code - This is what your frontend calls
 router.post('/validate-qr', validateQR);
 
 // Get path between two locations
