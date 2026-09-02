@@ -6,7 +6,10 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "seed": "node scripts/seed.js",
+    "seed:prod": "NODE_ENV=production node scripts/seed.js",
+    "seed:reset": "node scripts/seed-reset.js"
   },
   "keywords": [],
   "author": "",
@@ -21,7 +24,7 @@
     "js-cookie": "^3.0.8",
     "js-token": "^1.0.0",
     "jsonwebtoken": "^9.0.3",
-    "mysql2": "^3.22.5",
+    "mysql2": "^3.24.3",
     "nodemon": "^3.1.14",
     "qrcode": "^1.5.4"
   }
