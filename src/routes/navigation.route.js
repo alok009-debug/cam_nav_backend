@@ -10,6 +10,7 @@ const router = express.Router();
 // Get all locations (for dropdown)
 router.get('/locations', getAllLocationsByAdminID);
 router.get('/all-locations', getAllLocations);
+router.get('/public-location', getPublicLocations)
 
 // Public: Get text directions (for testing)
 router.get('/directions', getTextDirections);
