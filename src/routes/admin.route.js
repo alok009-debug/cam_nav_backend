@@ -3,8 +3,6 @@ const auth = require('../middleware/auth');
 const authController = require('../controllers/auth.Controller');
 const locController = require('../controllers/locations.Controller');
 const qrCode = require('../controllers/qrCodes.controller');
-const graphController = require('../controllers/graph.controller');
-const nodeController = require('../controllers/node.controller');
 
 const router = express.Router();
 
@@ -14,19 +12,20 @@ router.get("/admins", auth, authController.getAllAdmins);
 router.get("/profile", auth, authController.getProfile);
 
 
+// Locations (Auto creates nodes and edges)
 router.post("/locations", auth, locController.createLocation);
 router.get("/locations", auth, locController.getAllLocationsByAdminID);
 router.get("/locations/:id", auth, locController.getLocationById);
+router.delete("/locations/:id",auth, locController.deleteLocation);
 router.put("/location/:id", auth, locController.updateLocation);
-router.delete("/locations/:id", auth, locController.deleteLocation);
 
+// Nodes & Edges
+router.get("/nodes", auth, locController.getAllNodes);
+router.get("/edges", auth, locController.getAllEdges);
 
-// ============ GRAPH ROUTES ============
-router.post('/generate-graph', auth, graphController.generateGraph);
-router.post('/create-hub', auth, graphController.createHubAndConnect);
-router.post('/smart-connect', auth, graphController.smartConnect);
-
-
+// Manual fix: Connect all existing nodes
+router.post("/connect-all", auth, locController.connectAllNodes);
+router.post("/create-missing-nodes", auth, locController.createMissingNodes);
 
 // ============ QR CODE ROUTES ============
 router.get('/qr/generate/:locId', auth, qrCode.generateQR);
@@ -34,11 +33,5 @@ router.get('/qr/generate-all', auth, qrCode.generateAllQRs);
 router.get('/qr/data/:locId', auth, qrCode.getQRData);
 router.get('/qr/regenerate/:locId', auth, qrCode.regenerateQR); 
 
-
-// ============ NODE ROUTES ============
-router.get('/nodes', auth, nodeController.getAllNodes);
-router.get('/edges', auth, nodeController.getAllEdges);
-router.post('/nodes', auth, nodeController.createNode);
-router.post('/nodes/connect', auth, nodeController.connectNodes);
 
 module.exports = router;

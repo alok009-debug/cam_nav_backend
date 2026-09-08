@@ -1,108 +1,28 @@
 const pool = require('../db/sql.db');
 
-// ============ GET LOCATIONS BY ADMIN ID ============
-const getAllLocationsByAdminID = async (req, res) => {
-    const { admin_id } = req.query;
-    try {
-        console.log("fetching locations data of admin id: ", admin_id);
-
-        const [rows] = await pool.query(
-            `SELECT * 
-            FROM locations
-            WHERE admin_id = ?
-            ORDER BY locId DESC`,
-            [admin_id]
-        );
-
-        console.log('Locations found:', rows.length);
-        res.status(200).json(rows);
-    } catch (error) {
-        console.error("Error fetching locations", error);
-        res.status(500).json({ error: "error in fetching locations" });
-    }
-};
-
-// ============ FETCH ALL LOCATIONS ============
-const getAllLocations = async (req, res) => {
-    try {
-        const [rows] = await pool.query(
-            'SELECT locId, name, latitude, longitude, building, admin_id FROM locations ORDER BY name'
-        );
-        res.json(rows);
-    } catch (error) {
-        console.error('Error fetching all locations:', error);
-        res.status(500).json({ error: 'Failed to fetch locations' });
-    }
-};
-
-// ============ GET PUBLIC LOCATIONS ============
-const getPublicLocations = async (req, res) => {
-    const { admin_id } = req.query;
-
-    if (!admin_id) {
-        admin_id = 4;
-    }
-    console.log(admin_id);
-
-
-    try {
-        let query = 'SELECT locId, name, latitude, longitude, building, admin_id FROM locations';
-        let params = [];
-
-        if (admin_id) {
-            query += ' WHERE admin_id = ?';
-            params.push(admin_id);
-        }
-
-        query += ' ORDER BY name';
-
-        console.log(' SQL Query:', query);
-        console.log(' Params:', params);
-
-        const [rows] = await pool.query(query, params);
-        return res.json(rows);
-
-    } catch (error) {
-        console.error("Failed to fetch public locations:", error);
-        return res.status(500).json({ error: "Failed to fetch Public locations" });
-    }
-};
-
-// ============ GET LOCATION BY ID ============
-const getLocationById = async (req, res) => {
-    try {
-        const { id } = req.params;
-        console.log(id);
-
-        if (!id) {
-            return res.status(400).json({ error: "Id is required" });
-        }
-
-        const [rows] = await pool.query(
-            `SELECT name, building, latitude, longitude 
-            FROM locations 
-            WHERE locId = ?`,
-            [id]
-        );
-        if (rows.length === 0) {
-            return res.status(404).json({ error: "Location not found" });
-        }
-
-        res.status(200).json({
-            success: true,
-            location: rows[0]
-        });
-    } catch (error) {
-        console.error("cant fetch location by id", error);
-        res.status(500).json({ error: "cant fetch location" });
-    }
-};
-
-// ============ HELPER: Auto-generate node and edges ============
+// ============================================================
+// HELPER: Calculate distance between two coordinates
+// ============================================================
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const toRad = (deg) => (deg * Math.PI) / 180;
+    
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    
+    return R * c;
+}
+// ============================================================
+// HELPER: Auto-generate node and edges
+// ============================================================
 async function autoGenerateNodeAndEdges(location) {
     const { locId, name, latitude, longitude, building, floor, is_indoor, admin_id } = location;
 
-    // ✅ Check if node already exists for this location
+    // 1. Check if node already exists
     const [existingNode] = await pool.query(
         'SELECT node_id FROM campus_nodes WHERE location_id = ?',
         [locId]
@@ -118,7 +38,7 @@ async function autoGenerateNodeAndEdges(location) {
         };
     }
 
-    // 1. Create node for this location
+    // 2. Create node
     const [maxNode] = await pool.query('SELECT MAX(node_id) as max_id FROM campus_nodes');
     const newNodeId = (maxNode[0].max_id || 0) + 1;
 
@@ -129,7 +49,7 @@ async function autoGenerateNodeAndEdges(location) {
 
     console.log(`✅ Created node ${newNodeId} for "${name}"`);
 
-    // 2. Find nearest existing node and connect
+    // 3. Find nearest existing node
     const [nearestNode] = await pool.query(`
         SELECT 
             node_id, 
@@ -139,91 +59,50 @@ async function autoGenerateNodeAndEdges(location) {
             SQRT(POW(latitude - ?, 2) + POW(longitude - ?, 2)) * 111000 as distance_meters
         FROM campus_nodes 
         WHERE node_id != ? 
-          AND node_id NOT IN (SELECT from_node_id FROM campus_edges WHERE to_node_id = ?)
-          AND node_id NOT IN (SELECT to_node_id FROM campus_edges WHERE from_node_id = ?)
-        ORDER BY distance_meters ASC
+        ORDER BY distance_meters ASC 
         LIMIT 1
-    `, [latitude, longitude, newNodeId, newNodeId, newNodeId]);
+    `, [latitude, longitude, newNodeId]);
 
+    // 4. Connect to nearest node if found
     if (nearestNode && nearestNode.node_id) {
         const distance = Math.round(nearestNode.distance_meters);
 
-        // 3. Generate direction hint
-        const directionHint = generateDirectionHint(
-            latitude, longitude,
-            nearestNode.latitude, nearestNode.longitude,
-            nearestNode.node_name
-        );
+        if (distance < 5000) {
+            // ✅ ALWAYS: Direction is based on TO_NODE only
+            // Forward: new → nearest
+            await pool.query(`
+                INSERT INTO campus_edges (from_node_id, to_node_id, distance_meters, edge_type, direction_hint)
+                VALUES (?, ?, ?, ?, ?)
+            `, [newNodeId, nearestNode.node_id, Math.max(1, distance), 'walkway', `Walk towards ${nearestNode.node_name}`]);
 
-        // 4. Create bidirectional edges
-        await pool.query(`
-            INSERT INTO campus_edges (from_node_id, to_node_id, distance_meters, edge_type, direction_hint)
-            VALUES (?, ?, ?, ?, ?)
-        `, [newNodeId, nearestNode.node_id, Math.max(1, distance), 'walkway', directionHint]);
+            // Return: nearest → new
+            await pool.query(`
+                INSERT INTO campus_edges (from_node_id, to_node_id, distance_meters, edge_type, direction_hint)
+                VALUES (?, ?, ?, ?, ?)
+            `, [nearestNode.node_id, newNodeId, Math.max(1, distance), 'walkway', `Walk towards ${name}`]);
 
-        await pool.query(`
-            INSERT INTO campus_edges (from_node_id, to_node_id, distance_meters, edge_type, direction_hint)
-            VALUES (?, ?, ?, ?, ?)
-        `, [nearestNode.node_id, newNodeId, Math.max(1, distance), 'walkway', `Walk back towards ${name}`]);
-
-        console.log(`🔗 Connected "${name}" → "${nearestNode.node_name}" (${distance}m)`);
-
-        return {
-            nodeId: newNodeId,
-            connectedTo: nearestNode.node_id,
-            distance: distance,
-            directionHint: directionHint
-        };
+            console.log(`🔗 "${name}" → "${nearestNode.node_name}" (${distance}m)`);
+        } else {
+            console.log(`⚠️ Nearest node too far (${distance}m), skipping connection`);
+        }
+    } else {
+        console.log(`⚠️ No other nodes found to connect`);
     }
 
-    return { nodeId: newNodeId, connectedTo: null, distance: 0 };
+    return {
+        nodeId: newNodeId,
+        connectedTo: nearestNode?.node_id || null,
+        distance: nearestNode ? Math.round(nearestNode.distance_meters) : 0,
+        directionHint: nearestNode ? `Walk towards ${nearestNode.node_name}` : 'No connection'
+    };
 }
 
-// ============ GENERATE DIRECTION HINT ============
-function generateDirectionHint(lat1, lon1, lat2, lon2, targetName) {
-    // Calculate bearing
-    const toRad = (deg) => (deg * Math.PI) / 180;
-    const toDeg = (rad) => (rad * 180) / Math.PI;
-
-    const dLon = toRad(lon2 - lon1);
-    const lat1Rad = toRad(lat1);
-    const lat2Rad = toRad(lat2);
-
-    const y = Math.sin(dLon) * Math.cos(lat2Rad);
-    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
-        Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
-
-    let bearing = toDeg(Math.atan2(y, x));
-    bearing = (bearing + 360) % 360;
-
-    // Determine cardinal direction
-    let direction = '';
-    if (bearing >= 337.5 || bearing < 22.5) direction = 'North';
-    else if (bearing >= 22.5 && bearing < 67.5) direction = 'Northeast';
-    else if (bearing >= 67.5 && bearing < 112.5) direction = 'East';
-    else if (bearing >= 112.5 && bearing < 157.5) direction = 'Southeast';
-    else if (bearing >= 157.5 && bearing < 202.5) direction = 'South';
-    else if (bearing >= 202.5 && bearing < 247.5) direction = 'Southwest';
-    else if (bearing >= 247.5 && bearing < 292.5) direction = 'West';
-    else if (bearing >= 292.5 && bearing < 337.5) direction = 'Northwest';
-
-    return `Walk ${direction} towards ${targetName}`;
-}
-
-// ============ CREATE LOCATION ============
+// ============================================================
+// CREATE LOCATION
+// ============================================================
 const createLocation = async (req, res) => {
     try {
-        const {
-            name,
-            admin_id,
-            latitude,
-            longitude,
-            floor,
-            is_indoor,
-            building,
-            description,
-            create_node  // ✅ NEW: flag to create node
-        } = req.body;
+        const { name, admin_id, latitude, longitude, floor, is_indoor, building, description, create_node } = req.body;
 
         if (!name || !admin_id || latitude === undefined || longitude === undefined) {
             return res.status(400).json({
@@ -231,7 +110,7 @@ const createLocation = async (req, res) => {
             });
         }
 
-        // Check for duplicate coordinates
+        // Check duplicate coordinates
         const [existing] = await pool.query(
             'SELECT locId, name FROM locations WHERE latitude = ? AND longitude = ?',
             [latitude, longitude]
@@ -249,17 +128,17 @@ const createLocation = async (req, res) => {
         const [result] = await pool.query(`
             INSERT INTO locations (name, admin_id, latitude, longitude, floor, is_indoor, building, description)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `, [name, admin_id, latitude, longitude, floor || null, is_indoor || false, building || null, description || null]);
+        `, [name, admin_id, latitude, longitude, floor || null, is_indoor || 0, building || null, description || null]);
 
         const [newLocation] = await pool.query(
             'SELECT * FROM locations WHERE locId = ?',
             [result.insertId]
         );
 
-        // ✅ AUTO-GENERATE NODE IF CHECKBOX IS CHECKED
+        // Auto-generate node and edges if checkbox is checked
         let autoResult = null;
-        if (create_node !== false) {  // Default to true if not specified
-            console.log(`🗺️ Creating node for "${name}" (create_node: true)`);
+        if (create_node !== false) {
+            console.log(`🗺️ Creating node for "${name}"`);
             autoResult = await autoGenerateNodeAndEdges(newLocation[0]);
         } else {
             console.log(`⏭️ Skipping node creation for "${name}"`);
@@ -273,9 +152,7 @@ const createLocation = async (req, res) => {
                 distance: autoResult.distance,
                 directionHint: autoResult.directionHint
             } : null,
-            message: autoResult
-                ? 'Location created with auto-generated node and edges!'
-                : 'Location created without node'
+            message: autoResult ? 'Location created with auto-generated node and edges!' : 'Location created without node'
         });
 
     } catch (error) {
@@ -283,28 +160,222 @@ const createLocation = async (req, res) => {
         res.status(500).json({ error: 'Failed to create location' });
     }
 };
+// ============================================================
+// MANUAL FIX: Connect all existing nodes
+// ============================================================
+const connectAllNodes = async (req, res) => {
+    try {
+        console.log('🔗 Connecting all existing nodes...');
+        
+        const [nodes] = await pool.query(
+            'SELECT node_id, node_name, latitude, longitude FROM campus_nodes ORDER BY node_id'
+        );
 
-// ============ UPDATE LOCATION (with auto-reconnect) ============
+        if (nodes.length < 2) {
+            return res.json({ 
+                success: true, 
+                message: 'Need at least 2 nodes to connect',
+                edgesCreated: 0 
+            });
+        }
+
+        let edgesCreated = 0;
+        let skipped = 0;
+
+        for (let i = 0; i < nodes.length; i++) {
+            const node = nodes[i];
+            
+            // Find nearest node
+            let nearest = null;
+            let minDist = Infinity;
+
+            for (let j = 0; j < nodes.length; j++) {
+                if (i === j) continue;
+                
+                const dist = calculateDistance(
+                    node.latitude, node.longitude,
+                    nodes[j].latitude, nodes[j].longitude
+                );
+
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearest = nodes[j];
+                }
+            }
+
+            if (nearest && minDist < 5000) {
+                const distance = Math.round(minDist);
+
+                // Check if edge already exists
+                const [existing] = await pool.query(`
+                    SELECT edge_id FROM campus_edges 
+                    WHERE (from_node_id = ? AND to_node_id = ?) 
+                       OR (from_node_id = ? AND to_node_id = ?)
+                `, [node.node_id, nearest.node_id, nearest.node_id, node.node_id]);
+
+                if (existing.length === 0) {
+                    // ✅ ALWAYS: Direction is based on TO_NODE only
+                    await pool.query(`
+                        INSERT INTO campus_edges (from_node_id, to_node_id, distance_meters, edge_type, direction_hint)
+                        VALUES (?, ?, ?, ?, ?)
+                    `, [node.node_id, nearest.node_id, distance, 'walkway', `Walk towards ${nearest.node_name}`]);
+
+                    await pool.query(`
+                        INSERT INTO campus_edges (from_node_id, to_node_id, distance_meters, edge_type, direction_hint)
+                        VALUES (?, ?, ?, ?, ?)
+                    `, [nearest.node_id, node.node_id, distance, 'walkway', `Walk towards ${node.node_name}`]);
+
+                    edgesCreated += 2;
+                    console.log(`   ✅ "${node.node_name}" ↔ "${nearest.node_name}" (${distance}m)`);
+                } else {
+                    skipped++;
+                }
+            }
+        }
+
+        res.json({
+            success: true,
+            message: `✅ Connected ${edgesCreated/2} pairs of nodes (${edgesCreated} edges created). ${skipped} pairs already connected.`,
+            edgesCreated: edgesCreated,
+            pairsConnected: edgesCreated / 2,
+            skipped: skipped
+        });
+
+    } catch (error) {
+        console.error('❌ Error connecting nodes:', error);
+        res.status(500).json({ error: 'Failed to connect nodes: ' + error.message });
+    }
+};
+
+// ============================================================
+// GET ALL LOCATIONS
+// ============================================================
+const getAllLocations = async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            'SELECT locId, name, latitude, longitude, building FROM locations ORDER BY name'
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Error fetching locations:', error);
+        res.status(500).json({ error: 'Failed to fetch locations' });
+    }
+};
+
+// ============================================================
+// GET ALL NODES
+// ============================================================
+const getAllNodes = async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM campus_nodes ORDER BY node_id');
+        res.json(rows);
+    } catch (error) {
+        console.error('Error fetching nodes:', error);
+        res.status(500).json({ error: 'Failed to fetch nodes' });
+    }
+};
+
+// ============================================================
+// GET ALL EDGES
+// ============================================================
+const getAllEdges = async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT 
+                e.*,
+                n1.node_name AS from_node_name,
+                n2.node_name AS to_node_name
+            FROM campus_edges e
+            JOIN campus_nodes n1 ON e.from_node_id = n1.node_id
+            JOIN campus_nodes n2 ON e.to_node_id = n2.node_id
+            ORDER BY e.edge_id
+        `);
+        res.json(rows);
+    } catch (error) {
+        console.error('Error fetching edges:', error);
+        res.status(500).json({ error: 'Failed to fetch edges' });
+    }
+};
+
+// ============================================================
+// GET LOCATIONS BY ADMIN
+// ============================================================
+const getAllLocationsByAdminID = async (req, res) => {
+    const { admin_id } = req.query;
+    try {
+        const [rows] = await pool.query(
+            `SELECT * FROM locations WHERE admin_id = ? ORDER BY locId DESC`,
+            [admin_id]
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Error fetching locations:', error);
+        res.status(500).json({ error: 'Failed to fetch locations' });
+    }
+};
+
+// ============================================================
+// GET PUBLIC LOCATIONS
+// ============================================================
+const getPublicLocations = async (req, res) => {
+    const { admin_id } = req.query;
+    const defaultAdminId = admin_id || 4;
+
+    try {
+        const [rows] = await pool.query(
+            'SELECT locId, name, latitude, longitude, building, admin_id FROM locations WHERE admin_id = ? ORDER BY name',
+            [defaultAdminId]
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Error fetching public locations:', error);
+        res.status(500).json({ error: 'Failed to fetch locations' });
+    }
+};
+
+// ============================================================
+// GET LOCATION BY ID
+// ============================================================
+const getLocationById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!id) {
+            return res.status(400).json({ error: 'Id is required' });
+        }
+
+        const [rows] = await pool.query(
+            'SELECT name, building, latitude, longitude FROM locations WHERE locId = ?',
+            [id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Location not found' });
+        }
+
+        res.json({ success: true, location: rows[0] });
+    } catch (error) {
+        console.error('Error fetching location:', error);
+        res.status(500).json({ error: 'Failed to fetch location' });
+    }
+};
+
+// ============================================================
+// UPDATE LOCATION
+// ============================================================
 const updateLocation = async (req, res) => {
     try {
         const { id } = req.params;
         const { name, latitude, longitude, floor, is_indoor, building, description } = req.body;
 
         if (!name || latitude === undefined || longitude === undefined) {
-            return res.status(400).json({ error: "Name, latitude, and longitude are required" });
+            return res.status(400).json({ error: 'Name, latitude, and longitude are required' });
         }
 
-        // Check if location exists
-        const [existing] = await pool.query(
-            'SELECT * FROM locations WHERE locId = ?',
-            [id]
-        );
-
+        const [existing] = await pool.query('SELECT * FROM locations WHERE locId = ?', [id]);
         if (existing.length === 0) {
             return res.status(404).json({ error: 'Location not found' });
         }
 
-        // Check if coordinates changed
         const oldLat = parseFloat(existing[0].latitude);
         const oldLng = parseFloat(existing[0].longitude);
         const newLat = parseFloat(latitude);
@@ -312,49 +383,20 @@ const updateLocation = async (req, res) => {
         const coordsChanged = (oldLat !== newLat || oldLng !== newLng);
 
         await pool.query(`
-            UPDATE locations
-            SET name = ?, latitude = ?, longitude = ?, floor = ?, is_indoor = ?, building = ?, description = ?
+            UPDATE locations SET name = ?, latitude = ?, longitude = ?, floor = ?, is_indoor = ?, building = ?, description = ?
             WHERE locId = ?
         `, [name, latitude, longitude, floor || null, is_indoor || false, building || null, description || null, id]);
 
-        //  If coordinates changed, update node and edges
         if (coordsChanged) {
-            // Find the node for this location
-            const [node] = await pool.query(
-                'SELECT node_id FROM campus_nodes WHERE location_id = ?',
-                [id]
-            );
-
+            const [node] = await pool.query('SELECT node_id FROM campus_nodes WHERE location_id = ?', [id]);
             if (node.length > 0) {
-                // Update node coordinates
-                await pool.query(`
-                    UPDATE campus_nodes 
-                    SET latitude = ?, longitude = ?, node_name = ?
-                    WHERE node_id = ?
-                `, [latitude, longitude, name, node[0].node_id]);
-
-                // Delete old edges
-                await pool.query(
-                    'DELETE FROM campus_edges WHERE from_node_id = ? OR to_node_id = ?',
-                    [node[0].node_id, node[0].node_id]
-                );
-
-                // Reconnect to nearest node
-                const [updatedLocation] = await pool.query(
-                    'SELECT * FROM locations WHERE locId = ?',
-                    [id]
-                );
+                await pool.query('DELETE FROM campus_edges WHERE from_node_id = ? OR to_node_id = ?', [node[0].node_id, node[0].node_id]);
+                const [updatedLocation] = await pool.query('SELECT * FROM locations WHERE locId = ?', [id]);
                 await autoGenerateNodeAndEdges(updatedLocation[0]);
-
-                console.log(` Reconnected node for "${name}" after coordinate change`);
             }
         }
 
-        const [updatedLocation] = await pool.query(
-            'SELECT * FROM locations WHERE locId = ?',
-            [id]
-        );
-
+        const [updatedLocation] = await pool.query('SELECT * FROM locations WHERE locId = ?', [id]);
         res.json(updatedLocation[0]);
 
     } catch (error) {
@@ -363,43 +405,101 @@ const updateLocation = async (req, res) => {
     }
 };
 
-// ============ DELETE LOCATION (with cleanup) ============
+// ============================================================
+// DELETE LOCATION
+// ============================================================
 const deleteLocation = async (req, res) => {
     try {
         const { id } = req.params;
+        const [node] = await pool.query('SELECT node_id FROM campus_nodes WHERE location_id = ?', [id]);
 
-        // Find node for this location
-        const [node] = await pool.query(
-            'SELECT node_id FROM campus_nodes WHERE location_id = ?',
-            [id]
-        );
-
-        // Delete edges and node
         if (node.length > 0) {
             await pool.query('DELETE FROM campus_edges WHERE from_node_id = ? OR to_node_id = ?', [node[0].node_id, node[0].node_id]);
             await pool.query('DELETE FROM campus_nodes WHERE node_id = ?', [node[0].node_id]);
         }
 
-        // Delete location
         await pool.query('DELETE FROM locations WHERE locId = ?', [id]);
-
-        res.json({
-            success: true,
-            message: 'Location and associated node/edges deleted successfully'
-        });
-
+        res.json({ success: true, message: 'Location and associated node/edges deleted' });
     } catch (error) {
         console.error('Error deleting location:', error);
         res.status(500).json({ error: 'Failed to delete location' });
     }
 };
 
+// ============================================================
+// CREATE MISSING NODES FOR ALL LOCATIONS
+// ============================================================
+const createMissingNodes = async (req, res) => {
+    try {
+        console.log('🔍 Checking for locations without nodes...');
+        
+        // 1. Find all locations that don't have a node
+        const [missingLocations] = await pool.query(`
+            SELECT l.* 
+            FROM locations l
+            LEFT JOIN campus_nodes n ON l.locId = n.location_id
+            WHERE n.node_id IS NULL
+            ORDER BY l.locId
+        `);
+
+        if (missingLocations.length === 0) {
+            return res.json({
+                success: true,
+                message: '✅ All locations already have nodes!',
+                nodesCreated: 0,
+                locations: []
+            });
+        }
+
+        console.log(`📍 Found ${missingLocations.length} locations without nodes`);
+
+        let nodesCreated = 0;
+        const createdNodes = [];
+
+        // 2. Create node for each missing location
+        for (const location of missingLocations) {
+            const result = await autoGenerateNodeAndEdges(location);
+            
+            // Wait a bit to avoid race conditions with node IDs
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
+            nodesCreated++;
+            createdNodes.push({
+                locId: location.locId,
+                name: location.name,
+                nodeId: result.nodeId,
+                connectedTo: result.connectedTo,
+                distance: result.distance,
+                directionHint: result.directionHint
+            });
+            
+            console.log(`   ✅ Created node ${result.nodeId} for "${location.name}"`);
+        }
+
+        res.json({
+            success: true,
+            message: `✅ Created ${nodesCreated} nodes for ${missingLocations.length} locations`,
+            nodesCreated: nodesCreated,
+            totalLocations: missingLocations.length,
+            createdNodes: createdNodes
+        });
+
+    } catch (error) {
+        console.error('❌ Error creating missing nodes:', error);
+        res.status(500).json({ error: 'Failed to create missing nodes: ' + error.message });
+    }
+};
+
 module.exports = {
+    createLocation,
     getAllLocations,
+    getAllNodes,
+    getAllEdges,
     getAllLocationsByAdminID,
     getPublicLocations,
     getLocationById,
-    createLocation,
     updateLocation,
-    deleteLocation
+    deleteLocation,
+    connectAllNodes,
+    createMissingNodes
 };
