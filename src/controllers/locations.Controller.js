@@ -16,8 +16,56 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
     
     return R * c;
 }
+
 // ============================================================
-// HELPER: Auto-generate node and edges
+// HELPER: Connect new node to ONLY the nearest node
+// ============================================================
+async function connectNewNodeToExisting(newNodeId, latitude, longitude) {
+    // Find only the SINGLE nearest node within 50m
+    const [nearestNode] = await pool.query(`
+        SELECT 
+            node_id, 
+            node_name,
+            latitude, 
+            longitude,
+            SQRT(POW(latitude - ?, 2) + POW(longitude - ?, 2)) * 111000 as distance_meters
+        FROM campus_nodes 
+        WHERE node_id != ? 
+          AND node_id NOT IN (SELECT from_node_id FROM campus_edges WHERE to_node_id = ?)
+          AND node_id NOT IN (SELECT to_node_id FROM campus_edges WHERE from_node_id = ?)
+          AND SQRT(POW(latitude - ?, 2) + POW(longitude - ?, 2)) * 111000 < 50
+        ORDER BY distance_meters ASC 
+        LIMIT 1
+    `, [latitude, longitude, newNodeId, newNodeId, newNodeId, latitude, longitude]);
+
+    if (nearestNode && nearestNode.node_id) {
+        const distance = Math.round(nearestNode.distance_meters);
+        
+        // Check if edge already exists
+        const [existing] = await pool.query(`
+            SELECT edge_id FROM campus_edges 
+            WHERE (from_node_id = ? AND to_node_id = ?) 
+               OR (from_node_id = ? AND to_node_id = ?)
+        `, [newNodeId, nearestNode.node_id, nearestNode.node_id, newNodeId]);
+
+        if (existing.length === 0) {
+            await pool.query(`
+                INSERT INTO campus_edges (from_node_id, to_node_id, distance_meters, edge_type, direction_hint)
+                VALUES (?, ?, ?, ?, ?)
+            `, [newNodeId, nearestNode.node_id, Math.max(1, distance), 'walkway', `Walk towards ${nearestNode.node_name}`]);
+
+            await pool.query(`
+                INSERT INTO campus_edges (from_node_id, to_node_id, distance_meters, edge_type, direction_hint)
+                VALUES (?, ?, ?, ?, ?)
+            `, [nearestNode.node_id, newNodeId, Math.max(1, distance), 'walkway', `Walk towards ${nearestNode.node_name}`]);
+
+            console.log(` Auto-connected "${newNodeId}" → "${nearestNode.node_name}" (${distance}m)`);
+        }
+    }
+}
+
+// ============================================================
+// HELPER: Auto-generate node and edges (FIXED)
 // ============================================================
 async function autoGenerateNodeAndEdges(location) {
     const { locId, name, latitude, longitude, building, floor, is_indoor, admin_id } = location;
@@ -29,7 +77,7 @@ async function autoGenerateNodeAndEdges(location) {
     );
 
     if (existingNode.length > 0) {
-        console.log(`⏭️ Node already exists for "${name}" (node_id: ${existingNode[0].node_id})`);
+        console.log(` Node already exists for "${name}" (node_id: ${existingNode[0].node_id})`);
         return {
             nodeId: existingNode[0].node_id,
             connectedTo: null,
@@ -47,9 +95,9 @@ async function autoGenerateNodeAndEdges(location) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [newNodeId, name, latitude, longitude, is_indoor || 0, building || null, floor || null, 1, locId]);
 
-    console.log(`✅ Created node ${newNodeId} for "${name}"`);
+    console.log(` Created node ${newNodeId} for "${name}"`);
 
-    // 3. Find nearest existing node
+    // 3. Find the SINGLE nearest node (within 50m)
     const [nearestNode] = await pool.query(`
         SELECT 
             node_id, 
@@ -59,34 +107,28 @@ async function autoGenerateNodeAndEdges(location) {
             SQRT(POW(latitude - ?, 2) + POW(longitude - ?, 2)) * 111000 as distance_meters
         FROM campus_nodes 
         WHERE node_id != ? 
+          AND SQRT(POW(latitude - ?, 2) + POW(longitude - ?, 2)) * 111000 < 50
         ORDER BY distance_meters ASC 
         LIMIT 1
-    `, [latitude, longitude, newNodeId]);
+    `, [latitude, longitude, newNodeId, latitude, longitude]);
 
-    // 4. Connect to nearest node if found
+    // 4. Connect to SINGLE nearest node
     if (nearestNode && nearestNode.node_id) {
         const distance = Math.round(nearestNode.distance_meters);
 
-        if (distance < 5000) {
-            // ✅ ALWAYS: Direction is based on TO_NODE only
-            // Forward: new → nearest
-            await pool.query(`
-                INSERT INTO campus_edges (from_node_id, to_node_id, distance_meters, edge_type, direction_hint)
-                VALUES (?, ?, ?, ?, ?)
-            `, [newNodeId, nearestNode.node_id, Math.max(1, distance), 'walkway', `Walk towards ${nearestNode.node_name}`]);
+        // Forward: new → nearest
+        await pool.query(`
+            INSERT INTO campus_edges (from_node_id, to_node_id, distance_meters, edge_type, direction_hint)
+            VALUES (?, ?, ?, ?, ?)
+        `, [newNodeId, nearestNode.node_id, Math.max(1, distance), 'walkway', `Walk towards ${nearestNode.node_name}`]);
 
-            // Return: nearest → new
-            await pool.query(`
-                INSERT INTO campus_edges (from_node_id, to_node_id, distance_meters, edge_type, direction_hint)
-                VALUES (?, ?, ?, ?, ?)
-            `, [nearestNode.node_id, newNodeId, Math.max(1, distance), 'walkway', `Walk towards ${name}`]);
+        // Return: nearest → new
+        await pool.query(`
+            INSERT INTO campus_edges (from_node_id, to_node_id, distance_meters, edge_type, direction_hint)
+            VALUES (?, ?, ?, ?, ?)
+        `, [nearestNode.node_id, newNodeId, Math.max(1, distance), 'walkway', `Walk towards ${name}`]);
 
-            console.log(`🔗 "${name}" → "${nearestNode.node_name}" (${distance}m)`);
-        } else {
-            console.log(`⚠️ Nearest node too far (${distance}m), skipping connection`);
-        }
-    } else {
-        console.log(`⚠️ No other nodes found to connect`);
+        console.log(` "${name}" ↔ "${nearestNode.node_name}" (${distance}m)`);
     }
 
     return {
@@ -97,8 +139,9 @@ async function autoGenerateNodeAndEdges(location) {
     };
 }
 
+
 // ============================================================
-// CREATE LOCATION
+// CREATE LOCATION (FULLY AUTOMATIC)
 // ============================================================
 const createLocation = async (req, res) => {
     try {
@@ -135,14 +178,8 @@ const createLocation = async (req, res) => {
             [result.insertId]
         );
 
-        // Auto-generate node and edges if checkbox is checked
-        let autoResult = null;
-        if (create_node !== false) {
-            console.log(`🗺️ Creating node for "${name}"`);
-            autoResult = await autoGenerateNodeAndEdges(newLocation[0]);
-        } else {
-            console.log(`⏭️ Skipping node creation for "${name}"`);
-        }
+        // AUTO-GENERATE NODE AND EDGES
+        const autoResult = await autoGenerateNodeAndEdges(newLocation[0]);
 
         res.status(201).json({
             location: newLocation[0],
@@ -152,7 +189,7 @@ const createLocation = async (req, res) => {
                 distance: autoResult.distance,
                 directionHint: autoResult.directionHint
             } : null,
-            message: autoResult ? 'Location created with auto-generated node and edges!' : 'Location created without node'
+            message: ' Location created with auto-generated node and edges!'
         });
 
     } catch (error) {
@@ -161,89 +198,139 @@ const createLocation = async (req, res) => {
     }
 };
 // ============================================================
-// MANUAL FIX: Connect all existing nodes
+// CONNECT ALL NODES (Using k-Nearest Neighbors, k=2)
 // ============================================================
 const connectAllNodes = async (req, res) => {
     try {
-        console.log('🔗 Connecting all existing nodes...');
+        console.log('Connecting nodes using k-Nearest Neighbors (k=2)...');
         
+        // 1. Clear existing blanket edges if resetting graph topology
+        // await pool.query('DELETE FROM campus_edges');
+
         const [nodes] = await pool.query(
             'SELECT node_id, node_name, latitude, longitude FROM campus_nodes ORDER BY node_id'
         );
 
         if (nodes.length < 2) {
-            return res.json({ 
-                success: true, 
-                message: 'Need at least 2 nodes to connect',
-                edgesCreated: 0 
-            });
+            return res.json({ success: true, message: 'Need at least 2 nodes to connect', edgesCreated: 0 });
         }
 
         let edgesCreated = 0;
-        let skipped = 0;
 
         for (let i = 0; i < nodes.length; i++) {
-            const node = nodes[i];
+            const currentNode = nodes[i];
             
-            // Find nearest node
-            let nearest = null;
-            let minDist = Infinity;
-
+            // Calculate distances to all other nodes
+            const distances = [];
             for (let j = 0; j < nodes.length; j++) {
                 if (i === j) continue;
-                
                 const dist = calculateDistance(
-                    node.latitude, node.longitude,
+                    currentNode.latitude, currentNode.longitude,
                     nodes[j].latitude, nodes[j].longitude
                 );
-
-                if (dist < minDist) {
-                    minDist = dist;
-                    nearest = nodes[j];
+                // Only consider nodes within reasonable walking distance (e.g., 60m)
+                if (dist <= 60) {
+                    distances.push({ node: nodes[j], dist: Math.round(dist) });
                 }
             }
 
-            if (nearest && minDist < 5000) {
-                const distance = Math.round(minDist);
+            // Sort by distance and pick top 2 nearest neighbors
+            distances.sort((a, b) => a.dist - b.dist);
+            const nearestNeighbors = distances.slice(0, 2);
 
-                // Check if edge already exists
+            for (const neighbor of nearestNeighbors) {
+                const targetNode = neighbor.node;
+                const distance = neighbor.dist;
+
                 const [existing] = await pool.query(`
                     SELECT edge_id FROM campus_edges 
                     WHERE (from_node_id = ? AND to_node_id = ?) 
                        OR (from_node_id = ? AND to_node_id = ?)
-                `, [node.node_id, nearest.node_id, nearest.node_id, node.node_id]);
+                `, [currentNode.node_id, targetNode.node_id, targetNode.node_id, currentNode.node_id]);
 
                 if (existing.length === 0) {
-                    // ✅ ALWAYS: Direction is based on TO_NODE only
                     await pool.query(`
                         INSERT INTO campus_edges (from_node_id, to_node_id, distance_meters, edge_type, direction_hint)
                         VALUES (?, ?, ?, ?, ?)
-                    `, [node.node_id, nearest.node_id, distance, 'walkway', `Walk towards ${nearest.node_name}`]);
+                    `, [currentNode.node_id, targetNode.node_id, distance, 'walkway', `Walk towards ${targetNode.node_name}`]);
 
                     await pool.query(`
                         INSERT INTO campus_edges (from_node_id, to_node_id, distance_meters, edge_type, direction_hint)
                         VALUES (?, ?, ?, ?, ?)
-                    `, [nearest.node_id, node.node_id, distance, 'walkway', `Walk towards ${node.node_name}`]);
+                    `, [targetNode.node_id, currentNode.node_id, distance, 'walkway', `Walk towards ${currentNode.node_name}`]);
 
                     edgesCreated += 2;
-                    console.log(`   ✅ "${node.node_name}" ↔ "${nearest.node_name}" (${distance}m)`);
-                } else {
-                    skipped++;
                 }
             }
         }
 
         res.json({
             success: true,
-            message: `✅ Connected ${edgesCreated/2} pairs of nodes (${edgesCreated} edges created). ${skipped} pairs already connected.`,
-            edgesCreated: edgesCreated,
-            pairsConnected: edgesCreated / 2,
-            skipped: skipped
+            message: ` Created ${edgesCreated} edges using nearest-neighbor topology.`,
+            edgesCreated: edgesCreated
         });
 
     } catch (error) {
-        console.error('❌ Error connecting nodes:', error);
+        console.error(' Error connecting nodes:', error);
         res.status(500).json({ error: 'Failed to connect nodes: ' + error.message });
+    }
+};
+
+// ============================================================
+// CREATE MISSING NODES
+// ============================================================
+const createMissingNodes = async (req, res) => {
+    try {
+        console.log(' Checking for locations without nodes...');
+        
+        const [missingLocations] = await pool.query(`
+            SELECT l.* 
+            FROM locations l
+            LEFT JOIN campus_nodes n ON l.locId = n.location_id
+            WHERE n.node_id IS NULL
+            ORDER BY l.locId
+        `);
+
+        if (missingLocations.length === 0) {
+            return res.json({
+                success: true,
+                message: ' All locations already have nodes!',
+                nodesCreated: 0,
+                locations: []
+            });
+        }
+
+        console.log(` Found ${missingLocations.length} locations without nodes`);
+
+        let nodesCreated = 0;
+        const createdNodes = [];
+
+        for (const location of missingLocations) {
+            const result = await autoGenerateNodeAndEdges(location);
+            await new Promise(resolve => setTimeout(resolve, 50));
+            nodesCreated++;
+            createdNodes.push({
+                locId: location.locId,
+                name: location.name,
+                nodeId: result.nodeId,
+                connectedTo: result.connectedTo,
+                distance: result.distance,
+                directionHint: result.directionHint
+            });
+            console.log(`    Created node ${result.nodeId} for "${location.name}"`);
+        }
+
+        res.json({
+            success: true,
+            message: ` Created ${nodesCreated} nodes for ${missingLocations.length} locations`,
+            nodesCreated: nodesCreated,
+            totalLocations: missingLocations.length,
+            createdNodes: createdNodes
+        });
+
+    } catch (error) {
+        console.error(' Error creating missing nodes:', error);
+        res.status(500).json({ error: 'Failed to create missing nodes: ' + error.message });
     }
 };
 
@@ -319,7 +406,7 @@ const getAllLocationsByAdminID = async (req, res) => {
 // ============================================================
 const getPublicLocations = async (req, res) => {
     const { admin_id } = req.query;
-    const defaultAdminId = admin_id || 4;
+    const defaultAdminId = admin_id || 12;
 
     try {
         const [rows] = await pool.query(
@@ -423,70 +510,6 @@ const deleteLocation = async (req, res) => {
     } catch (error) {
         console.error('Error deleting location:', error);
         res.status(500).json({ error: 'Failed to delete location' });
-    }
-};
-
-// ============================================================
-// CREATE MISSING NODES FOR ALL LOCATIONS
-// ============================================================
-const createMissingNodes = async (req, res) => {
-    try {
-        console.log('🔍 Checking for locations without nodes...');
-        
-        // 1. Find all locations that don't have a node
-        const [missingLocations] = await pool.query(`
-            SELECT l.* 
-            FROM locations l
-            LEFT JOIN campus_nodes n ON l.locId = n.location_id
-            WHERE n.node_id IS NULL
-            ORDER BY l.locId
-        `);
-
-        if (missingLocations.length === 0) {
-            return res.json({
-                success: true,
-                message: '✅ All locations already have nodes!',
-                nodesCreated: 0,
-                locations: []
-            });
-        }
-
-        console.log(`📍 Found ${missingLocations.length} locations without nodes`);
-
-        let nodesCreated = 0;
-        const createdNodes = [];
-
-        // 2. Create node for each missing location
-        for (const location of missingLocations) {
-            const result = await autoGenerateNodeAndEdges(location);
-            
-            // Wait a bit to avoid race conditions with node IDs
-            await new Promise(resolve => setTimeout(resolve, 50));
-            
-            nodesCreated++;
-            createdNodes.push({
-                locId: location.locId,
-                name: location.name,
-                nodeId: result.nodeId,
-                connectedTo: result.connectedTo,
-                distance: result.distance,
-                directionHint: result.directionHint
-            });
-            
-            console.log(`   ✅ Created node ${result.nodeId} for "${location.name}"`);
-        }
-
-        res.json({
-            success: true,
-            message: `✅ Created ${nodesCreated} nodes for ${missingLocations.length} locations`,
-            nodesCreated: nodesCreated,
-            totalLocations: missingLocations.length,
-            createdNodes: createdNodes
-        });
-
-    } catch (error) {
-        console.error('❌ Error creating missing nodes:', error);
-        res.status(500).json({ error: 'Failed to create missing nodes: ' + error.message });
     }
 };
 

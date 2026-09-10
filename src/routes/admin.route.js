@@ -3,6 +3,9 @@ const auth = require('../middleware/auth');
 const authController = require('../controllers/auth.Controller');
 const locController = require('../controllers/locations.Controller');
 const qrCode = require('../controllers/qrCodes.controller');
+const shortestPath = require('../controllers/shortestPath.controller')
+const getAllLocations = require('../controllers/locations.Controller')
+const smartConnect = require('../controllers/graph.controller')
 
 const router = express.Router();
 
@@ -27,11 +30,19 @@ router.get("/edges", auth, locController.getAllEdges);
 router.post("/connect-all", auth, locController.connectAllNodes);
 router.post("/create-missing-nodes", auth, locController.createMissingNodes);
 
+// i will delete after testing
+router.post("/smartconnect",smartConnect.smartConnect);
+
 // ============ QR CODE ROUTES ============
 router.get('/qr/generate/:locId', auth, qrCode.generateQR);
 router.get('/qr/generate-all', auth, qrCode.generateAllQRs);
 router.get('/qr/data/:locId', auth, qrCode.getQRData);
 router.get('/qr/regenerate/:locId', auth, qrCode.regenerateQR); 
+
+
+// // Public routes
+router.get('/locations', getAllLocations.getAllLocations);
+router.post('/shortest-path', shortestPath.getShortestPathKNN);
 
 
 module.exports = router;

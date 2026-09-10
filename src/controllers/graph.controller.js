@@ -4,7 +4,7 @@ const pool = require('../db/sql.db');
 const generateGraph = async (req, res) => {
     try {
         const adminId = req.adminId;
-        console.log(`🗺️ Generating graph for admin: ${adminId}`);
+        console.log(` Generating graph for admin: ${adminId}`);
 
         // 1. Get all locations for this admin
         const [locations] = await pool.query(
@@ -16,7 +16,7 @@ const generateGraph = async (req, res) => {
             return res.status(404).json({ error: 'No locations found for this admin' });
         }
 
-        console.log(`📍 Found ${locations.length} locations`);
+        console.log(` Found ${locations.length} locations`);
 
         let nodesCreated = 0;
         let edgesCreated = 0;
@@ -24,7 +24,7 @@ const generateGraph = async (req, res) => {
 
         // 2. For each location, create node if missing
         for (const loc of locations) {
-            // Check if node already exists
+            // Checking if node already exists
             const [existingNode] = await pool.query(
                 'SELECT node_id FROM campus_nodes WHERE location_id = ?',
                 [loc.locId]
@@ -41,7 +41,7 @@ const generateGraph = async (req, res) => {
                 `, [newNodeId, loc.name, loc.latitude, loc.longitude, loc.is_indoor || 0, loc.building || null, loc.floor || null, 1, loc.locId]);
 
                 nodesCreated++;
-                console.log(`   ✅ Created node ${newNodeId} for "${loc.name}"`);
+                console.log(`    Created node ${newNodeId} for "${loc.name}"`);
 
                 // Connect to nearest node
                 const [nearest] = await pool.query(`
@@ -75,9 +75,9 @@ const generateGraph = async (req, res) => {
                     `, [nearest.node_id, newNodeId, Math.max(1, distance), 'walkway', `Walk back towards ${loc.name}`]);
 
                     edgesCreated += 2;
-                    console.log(`   🔗 Connected "${loc.name}" → "${nearest.node_name}" (${distance}m)`);
+                    console.log(`    Connected "${loc.name}" → "${nearest.node_name}" (${distance}m)`);
                 } else {
-                    console.log(`   ⚠️ No nearby node found for "${loc.name}"`);
+                    console.log(`    No nearby node found for "${loc.name}"`);
                 }
             } else {
                 skipped++;
@@ -120,11 +120,11 @@ const generateGraph = async (req, res) => {
                     VALUES (?, ?, ?, ?, ?)
                 `, [nearest.node_id, node.node_id, Math.max(1, distance), 'walkway', `Walk back towards ${node.node_name}`]);
                 edgesCreated += 2;
-                console.log(`   🔗 Connected isolated "${node.node_name}" → "${nearest.node_name}" (${distance}m)`);
+                console.log(`    Connected isolated "${node.node_name}" → "${nearest.node_name}" (${distance}m)`);
             }
         }
 
-        const message = `✅ Generated ${nodesCreated} nodes and ${edgesCreated} edges. ${skipped} locations already had nodes.`;
+        const message = `Generated ${nodesCreated} nodes and ${edgesCreated} edges. ${skipped} locations already had nodes.`;
         console.log(message);
 
         res.json({
@@ -140,7 +140,7 @@ const generateGraph = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Graph generation error:', error);
+        console.error(' Graph generation error:', error);
         res.status(500).json({ error: 'Failed to generate graph: ' + error.message });
     }
 };
@@ -148,10 +148,10 @@ const generateGraph = async (req, res) => {
 const createHubAndConnect = async (req, res) => {
     try {
         const adminId = req.adminId;
-        console.log(`🏛️ Creating hub for admin: ${adminId}`);
+        console.log(` Creating hub for admin: ${adminId}`);
 
         // 1. Get all isolated nodes (nodes with no edges)
-        // ✅ FIX: Remove admin_id condition from campus_nodes query
+        //  FIX: Remove admin_id condition from campus_nodes query
         const [isolatedNodes] = await pool.query(`
             SELECT n.node_id, n.node_name, n.latitude, n.longitude, n.location_id
             FROM campus_nodes n
@@ -169,7 +169,7 @@ const createHubAndConnect = async (req, res) => {
             });
         }
 
-        console.log(`📍 Found ${isolatedNodes.length} isolated nodes`);
+        console.log(` Found ${isolatedNodes.length} isolated nodes`);
 
         // 2. Calculate center point
         let sumLat = 0, sumLng = 0;
@@ -180,7 +180,7 @@ const createHubAndConnect = async (req, res) => {
         const centerLat = sumLat / isolatedNodes.length;
         const centerLng = sumLng / isolatedNodes.length;
 
-        console.log(`📍 Center point: ${centerLat}, ${centerLng}`);
+        console.log(` Center point: ${centerLat}, ${centerLng}`);
 
         // 3. Create Hub node
         const [maxNode] = await pool.query('SELECT MAX(node_id) as max_id FROM campus_nodes');
@@ -191,7 +191,7 @@ const createHubAndConnect = async (req, res) => {
             VALUES (?, ?, ?, ?, ?, ?)
         `, [hubNodeId, 'Central Hub', centerLat, centerLng, 0, 'Campus Center']);
 
-        console.log(`✅ Created Hub node ${hubNodeId}`);
+        console.log(` Created Hub node ${hubNodeId}`);
 
         // 4. Connect all isolated nodes to Hub
         let edgesCreated = 0;
@@ -216,14 +216,14 @@ const createHubAndConnect = async (req, res) => {
             `, [hubNodeId, node.node_id, Math.max(1, distance), 'walkway', `Walk towards ${node.node_name}`]);
 
             edgesCreated += 2;
-            console.log(`   🔗 Connected "${node.node_name}" → Hub (${distance}m)`);
+            console.log(`    Connected "${node.node_name}" → Hub (${distance}m)`);
         }
 
-        console.log(`✅ Created ${edgesCreated} edges`);
+        console.log(` Created ${edgesCreated} edges`);
 
         res.json({
             success: true,
-            message: `✅ Connected ${isolatedNodes.length} isolated nodes to Central Hub (${edgesCreated} edges created)`,
+            message: ` Connected ${isolatedNodes.length} isolated nodes to Central Hub (${edgesCreated} edges created)`,
             stats: {
                 nodesConnected: isolatedNodes.length,
                 edgesCreated: edgesCreated,
@@ -232,7 +232,7 @@ const createHubAndConnect = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Hub creation error:', error);
+        console.error(' Hub creation error:', error);
         res.status(500).json({ error: 'Failed to create hub: ' + error.message });
     }
 };
@@ -240,7 +240,7 @@ const createHubAndConnect = async (req, res) => {
 // ============ SMART CONNECT - Auto-connect nearby nodes ============
 const smartConnect = async (req, res) => {
     try {
-        console.log(`🔗 Smart connect initiated...`);
+        console.log(` Smart connect initiated...`);
 
         // 1. Get all nodes with location_id
         const [nodes] = await pool.query(`
@@ -258,7 +258,7 @@ const smartConnect = async (req, res) => {
             });
         }
 
-        console.log(`📍 Found ${nodes.length} nodes`);
+        console.log(` Found ${nodes.length} nodes`);
 
         let edgesAdded = 0;
         let skipped = 0;
@@ -300,7 +300,7 @@ const smartConnect = async (req, res) => {
                         `, [node2.node_id, node1.node_id, Math.max(1, distance), 'walkway', `Walk back towards ${node1.node_name}`]);
 
                         edgesAdded += 2;
-                        console.log(`   🔗 Connected "${node1.node_name}" ↔ "${node2.node_name}" (${distance}m)`);
+                        console.log(`   Connected "${node1.node_name}" ↔ "${node2.node_name}" (${distance}m)`);
                     } else {
                         skipped++;
                     }
@@ -345,11 +345,11 @@ const smartConnect = async (req, res) => {
                 `, [nearest.node_id, node.node_id, Math.max(1, distance), 'walkway', `Walk back towards ${node.node_name}`]);
 
                 edgesAdded += 2;
-                console.log(`   🔗 Connected isolated "${node.node_name}" → "${nearest.node_name}" (${distance}m)`);
+                console.log(`    Connected isolated "${node.node_name}" → "${nearest.node_name}" (${distance}m)`);
             }
         }
 
-        const message = `✅ Connected ${edgesAdded/2} pairs of nearby locations (${edgesAdded} edges added). ${skipped} pairs already connected.`;
+        const message = ` Connected ${edgesAdded/2} pairs of nearby locations (${edgesAdded} edges added). ${skipped} pairs already connected.`;
         console.log(message);
 
         res.json({
@@ -365,7 +365,7 @@ const smartConnect = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Smart connect error:', error);
+        console.error('Smart connect error:', error);
         res.status(500).json({ error: 'Failed to connect locations: ' + error.message });
     }
 };

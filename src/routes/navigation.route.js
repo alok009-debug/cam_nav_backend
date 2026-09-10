@@ -2,7 +2,7 @@ const express = require('express');
 const { validateQR} = require('../controllers/qrCodes.controller')
 const { getPublicLocations, getAllLocations, getAllLocationsByAdminID } = require('../controllers/locations.Controller');
 const {getTextDirections}= require('../controllers/navigation.controller');
-const {shortestPath} = require('../controllers/shortestPath.controller')
+const {shortestPath,getShortestPathKNN} = require('../controllers/shortestPath.controller');
 const router = express.Router();
 
 // ============ PUBLIC ROUTES ============
@@ -15,7 +15,8 @@ router.get('/public-location', getPublicLocations)
 // Public: Get text directions (for testing)
 router.get('/directions', getTextDirections);
 
-router.post('/shortest-path', shortestPath);
+// router.post('/shortest-path', shortestPath);
+router.post('/shortest-path', getShortestPathKNN);
 
 router.post('/validate-qr', validateQR);
 

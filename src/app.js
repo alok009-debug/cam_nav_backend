@@ -2,6 +2,7 @@ const cors = require('cors');
 const express = require('express');
 const adminRoutes = require('./routes/admin.route');
 const navigationRoutes = require('./routes/navigation.route');
+const graphConnect = require('./controllers/graph.controller');
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.get('/', (req, res) => {
 app.get('/api/health', (req, res) => {
   res.send(Date());
 });
+app.post('api/graph/smart-connect',graphConnect.smartConnect);
 
 // Error handling
 app.use((err, req, res, next) => {
