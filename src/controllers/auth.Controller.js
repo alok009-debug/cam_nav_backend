@@ -3,8 +3,6 @@ const pool = require('../db/sql.db');
 const jwt = require('jsonwebtoken');
 const { json } = require('express');
 
-
-
 const signUp = async (req, res) => {
     try {
         const { username, email, phone, password, fullname } = req.body;

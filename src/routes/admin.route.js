@@ -6,6 +6,8 @@ const qrCode = require('../controllers/qrCodes.controller');
 const shortestPath = require('../controllers/shortestPath.controller')
 const getAllLocations = require('../controllers/locations.Controller')
 const smartConnect = require('../controllers/graph.controller')
+const { getShortestPathAStar } = require('../controllers/shortestPathAStar.controller'); 
+
 
 const router = express.Router();
 
@@ -15,7 +17,7 @@ router.get("/admins", auth, authController.getAllAdmins);
 router.get("/profile", auth, authController.getProfile);
 
 
-// Locations (Auto creates nodes and edges)
+// Locations 
 router.post("/locations", auth, locController.createLocation);
 router.get("/locations", auth, locController.getAllLocationsByAdminID);
 router.get("/locations/:id", auth, locController.getLocationById);

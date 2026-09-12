@@ -22,7 +22,6 @@ app.get('/', (req, res) => {
 app.get('/api/health', (req, res) => {
   res.send(Date());
 });
-app.post('api/graph/smart-connect',graphConnect.smartConnect);
 
 // Error handling
 app.use((err, req, res, next) => {
