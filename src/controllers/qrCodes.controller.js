@@ -1,6 +1,6 @@
 const QRCode = require('qrcode');
 const pool = require('../db/sql.db');
-const { generateQRCard } = require('../utils/qrcodeGenerator');
+const { generateQRCard } = require('../utils/qrCodeGenerator');
 
 
 // ============ GENERATE QR CODE FOR A LOCATION ============
