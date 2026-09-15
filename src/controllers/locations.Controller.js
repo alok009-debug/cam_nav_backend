@@ -2,7 +2,7 @@ const pool = require('../db/sql.db');
 
 
 // ============================================================
-// CREATE LOCATION (FULLY AUTOMATIC)
+// CREATE LOCATION
 // ============================================================
 const createLocation = async (req, res) => {
     try {
@@ -331,9 +331,6 @@ async function autoGenerateNodeAndEdges(location) {
 const connectAllNodes = async (req, res) => {
     try {
         console.log('Connecting nodes using k-Nearest Neighbors (k=2)...');
-        
-        // 1. Clear existing blanket edges if resetting graph topology
-        // await pool.query('DELETE FROM campus_edges');
 
         const [nodes] = await pool.query(
             'SELECT node_id, node_name, latitude, longitude FROM campus_nodes ORDER BY node_id'
@@ -357,7 +354,7 @@ const connectAllNodes = async (req, res) => {
                     nodes[j].latitude, nodes[j].longitude
                 );
                 // Only consider nodes within reasonable walking distance (e.g., 60m)
-                if (dist <= 60) {
+                if (dist <= 50) {
                     distances.push({ node: nodes[j], dist: Math.round(dist) });
                 }
             }
@@ -516,7 +513,6 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
     
     return R * c;
 }
-
 
 module.exports = {
     createLocation,

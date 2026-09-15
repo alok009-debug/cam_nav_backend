@@ -2,7 +2,7 @@ const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 const environment = process.env.NODE_ENV || 'development';
-console.log(`📊 Running in ${environment} mode`);
+console.log(`Running in ${environment} mode`);
 
 // Build config
 const config = {
@@ -21,20 +21,20 @@ if (environment === 'production') {
     config.ssl = {
         rejectUnauthorized: false
     };
-    console.log('🔒 SSL enabled');
+    console.log('SSL enabled');
 }
 
-console.log('📊 Host:', config.host);
-console.log('📊 Port:', config.port);
-console.log('📊 Database:', config.database);
+console.log('Host:', config.host);
+console.log('Port:', config.port);
+console.log('Database:', config.database);
 
 // Create pool
 let pool;
 try {
     pool = mysql.createPool(config);
-    console.log('✅ Pool created successfully');
+    console.log('Pool created successfully');
 } catch (error) {
-    console.error('❌ Failed to create pool:', error.message);
+    console.error('Failed to create pool:', error.message);
     process.exit(1);
 }
 
@@ -42,11 +42,11 @@ try {
 (async function testConnection() {
     try {
         const connection = await pool.getConnection();
-        console.log('✅ MySQL connected successfully!');
+        console.log('MySQL connected successfully!');
         connection.release();
     } catch (error) {
-        console.error('❌ MySQL connection failed:', error.message);
-        console.error('💡 Check your database credentials');
+        console.error('MySQL connection failed:', error.message);
+        console.error('Check your database credentials');
     }
 })();
 

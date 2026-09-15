@@ -30,7 +30,7 @@ async function generateQRCard(qrHash, locationName, options = {}) {
     const totalWidth = qrSize + margin * 2;
     const totalHeight = qrSize + margin * 2 + labelHeight;
 
-    // 2. ✅ SVG contains ONLY the text (no white rect covering everything!)
+    // 2.  SVG contains ONLY the text (no white rect covering everything!)
     const safeLabel = escapeXml(locationName || 'Unnamed Location');
 
     const textSvg = `
@@ -47,7 +47,7 @@ async function generateQRCard(qrHash, locationName, options = {}) {
         </svg>
     `;
 
-    // 3. ✅ Composite: white canvas + QR + text
+    // 3.  Composite: white canvas + QR + text
     const finalImage = await sharp({
         create: {
             width: totalWidth,

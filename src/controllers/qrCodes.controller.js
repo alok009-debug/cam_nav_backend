@@ -5,15 +5,15 @@ const { generateQRCard } = require('../utils/qrCodeGenerator');
 
 // ============ GENERATE QR CODE FOR A LOCATION ============
 const generateQR = async (req, res) => {
-    try {
-        const { locId } = req.params;
-        const adminId = req.adminId;
+  try {
+    const { locId } = req.params;
+    const adminId = req.adminId;
 
-        console.log(`📥 QR request: locId=${locId}, adminId=${adminId}`);
+    console.log(`📥 QR request: locId=${locId}, adminId=${adminId}`);
 
-        // ✅ Explicitly alias every column we use
-        const [location] = await pool.query(
-            `SELECT 
+    // ✅ Explicitly alias every column we use
+    const [location] = await pool.query(
+      `SELECT 
                 locId AS locId, 
                 name AS locationName, 
                 latitude, 
@@ -21,136 +21,136 @@ const generateQR = async (req, res) => {
                 admin_id 
              FROM locations 
              WHERE locId = ? AND admin_id = ?`,
-            [locId, adminId]
-        );
+      [locId, adminId]
+    );
 
-        if (location.length === 0) {
-            return res.status(404).json({ error: 'Location not found or unauthorized' });
-        }
-
-        const loc = location[0];
-        console.log(`📸 Location fetched:`, loc);
-
-        // ✅ Fallback if name is missing
-        const safeName = (loc.locationName && loc.locationName.trim()) 
-            ? loc.locationName.trim() 
-            : `Location_${locId}`;
-
-        // Check for existing QR
-        const [existingQR] = await pool.query(
-            'SELECT qr_hash FROM qr_codes WHERE location_id = ? AND admin_id = ?',
-            [locId, adminId]
-        );
-
-        let qrHash;
-        if (existingQR.length > 0) {
-            qrHash = existingQR[0].qr_hash;
-        } else {
-            const timestamp = Date.now().toString(36).toUpperCase();
-            qrHash = `CAMPUS_${adminId}_LOC_${locId}_${timestamp}`;
-            await pool.query(
-                `INSERT INTO qr_codes (qr_hash, location_id, admin_id) 
-                 VALUES (?, ?, ?)`,
-                [qrHash, locId, adminId]
-            );
-        }
-
-        // ✅ Generate QR card
-        const qrBuffer = await generateQRCard(qrHash, safeName, {
-            qrSize: 500,
-            margin: 50,
-            fontSize: 32,
-            labelHeight: 100
-        });
-
-        console.log(`📸 QR bytes: ${qrBuffer.length} for "${safeName}"`);
-
-        // ✅ Clean filename — no null, no odd chars
-        const cleanFileName = `QR_${safeName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${locId}.png`;
-
-        res.setHeader('Content-Type', 'image/png');
-        res.setHeader('Content-Disposition', `attachment; filename="${cleanFileName}"`);
-        res.send(qrBuffer);
-
-    } catch (error) {
-        console.error('Error generating QR:', error);
-        res.status(500).json({ error: 'Failed to generate QR code' });
+    if (location.length === 0) {
+      return res.status(404).json({ error: 'Location not found or unauthorized' });
     }
+
+    const loc = location[0];
+    console.log(`📸 Location fetched:`, loc);
+
+    // ✅ Fallback if name is missing
+    const safeName = (loc.locationName && loc.locationName.trim())
+      ? loc.locationName.trim()
+      : `Location_${locId}`;
+
+    // Check for existing QR
+    const [existingQR] = await pool.query(
+      'SELECT qr_hash FROM qr_codes WHERE location_id = ? AND admin_id = ?',
+      [locId, adminId]
+    );
+
+    let qrHash;
+    if (existingQR.length > 0) {
+      qrHash = existingQR[0].qr_hash;
+    } else {
+      const timestamp = Date.now().toString(36).toUpperCase();
+      qrHash = `CAMPUS_${adminId}_LOC_${locId}_${timestamp}`;
+      await pool.query(
+        `INSERT INTO qr_codes (qr_hash, location_id, admin_id) 
+                 VALUES (?, ?, ?)`,
+        [qrHash, locId, adminId]
+      );
+    }
+
+    // ✅ Generate QR card
+    const qrBuffer = await generateQRCard(qrHash, safeName, {
+      qrSize: 500,
+      margin: 50,
+      fontSize: 32,
+      labelHeight: 100
+    });
+
+    console.log(`📸 QR bytes: ${qrBuffer.length} for "${safeName}"`);
+
+    // ✅ Clean filename — no null, no odd chars
+    const cleanFileName = `QR_${safeName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${locId}.png`;
+
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Disposition', `attachment; filename="${cleanFileName}"`);
+    res.send(qrBuffer);
+
+  } catch (error) {
+    console.error('Error generating QR:', error);
+    res.status(500).json({ error: 'Failed to generate QR code' });
+  }
 };
 
 // ============ BULK GENERATE QR CODES ============
 const generateAllQRs = async (req, res) => {
-    try {
-        const adminId = req.adminId;
+  try {
+    const adminId = req.adminId;
 
-        const [locations] = await pool.query(
-            `SELECT 
+    const [locations] = await pool.query(
+      `SELECT 
                 locId AS locId, 
                 name AS locationName 
              FROM locations 
              WHERE admin_id = ? 
              ORDER BY locId`,
-            [adminId]
-        );
+      [adminId]
+    );
 
-        if (locations.length === 0) {
-            return res.status(404).json({ error: 'No locations found for this admin' });
-        }
-
-        const results = [];
-
-        for (const location of locations) {
-            const locId = location.locId;
-            const safeName = (location.locationName && location.locationName.trim())
-                ? location.locationName.trim()
-                : `Location_${locId}`;
-
-            const [existingQR] = await pool.query(
-                'SELECT qr_hash FROM qr_codes WHERE location_id = ? AND admin_id = ?',
-                [locId, adminId]
-            );
-
-            let qrHash;
-            if (existingQR.length > 0) {
-                qrHash = existingQR[0].qr_hash;
-            } else {
-                const timestamp = Date.now().toString(36).toUpperCase();
-                qrHash = `CAMPUS_${adminId}_LOC_${locId}_${timestamp}`;
-                await pool.query(
-                    `INSERT INTO qr_codes (qr_hash, location_id, admin_id) 
-                     VALUES (?, ?, ?)`,
-                    [qrHash, locId, adminId]
-                );
-            }
-
-            const qrBuffer = await generateQRCard(qrHash, safeName, {
-                qrSize: 300,
-                margin: 25,
-                fontSize: 22,
-                labelHeight: 60
-            });
-
-            const cleanFileName = `QR_${safeName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${locId}.png`;
-
-            results.push({
-                locId: locId,
-                name: safeName,
-                fileName: cleanFileName,
-                qrHash: qrHash,
-                qrData: qrBuffer.toString('base64')
-            });
-        }
-
-        res.json({
-            success: true,
-            message: `Generated QR codes for ${results.length} locations`,
-            locations: results
-        });
-
-    } catch (error) {
-        console.error('Error generating QR codes:', error);
-        res.status(500).json({ error: 'Failed to generate QR codes' });
+    if (locations.length === 0) {
+      return res.status(404).json({ error: 'No locations found for this admin' });
     }
+
+    const results = [];
+
+    for (const location of locations) {
+      const locId = location.locId;
+      const safeName = (location.locationName && location.locationName.trim())
+        ? location.locationName.trim()
+        : `Location_${locId}`;
+
+      const [existingQR] = await pool.query(
+        'SELECT qr_hash FROM qr_codes WHERE location_id = ? AND admin_id = ?',
+        [locId, adminId]
+      );
+
+      let qrHash;
+      if (existingQR.length > 0) {
+        qrHash = existingQR[0].qr_hash;
+      } else {
+        const timestamp = Date.now().toString(36).toUpperCase();
+        qrHash = `CAMPUS_${adminId}_LOC_${locId}_${timestamp}`;
+        await pool.query(
+          `INSERT INTO qr_codes (qr_hash, location_id, admin_id) 
+                     VALUES (?, ?, ?)`,
+          [qrHash, locId, adminId]
+        );
+      }
+
+      const qrBuffer = await generateQRCard(qrHash, safeName, {
+        qrSize: 300,
+        margin: 25,
+        fontSize: 22,
+        labelHeight: 60
+      });
+
+      const cleanFileName = `QR_${safeName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${locId}.png`;
+
+      results.push({
+        locId: locId,
+        name: safeName,
+        fileName: cleanFileName,
+        qrHash: qrHash,
+        qrData: qrBuffer.toString('base64')
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Generated QR codes for ${results.length} locations`,
+      locations: results
+    });
+
+  } catch (error) {
+    console.error('Error generating QR codes:', error);
+    res.status(500).json({ error: 'Failed to generate QR codes' });
+  }
 };
 
 // ============ VALIDATE QR CODE ============
@@ -176,9 +176,9 @@ const validateQR = async (req, res) => {
     );
 
     if (rows.length === 0) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        error: 'Invalid QR code' 
+        error: 'Invalid QR code'
       });
     }
 
@@ -199,9 +199,9 @@ const validateQR = async (req, res) => {
 
   } catch (error) {
     console.error('Error validating QR:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Failed to validate QR code' 
+      error: 'Failed to validate QR code'
     });
   }
 };

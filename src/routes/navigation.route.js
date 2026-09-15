@@ -16,11 +16,9 @@ router.get('/public-location', getPublicLocations)
 // Public: Get text directions (for testing)
 router.get('/directions', getTextDirections);
 
-// router.post('/shortest-path', shortestPath);
 router.post('/shortest-path', getShortestPathKNN);
 router.post('/shortest-path-astar', getShortestPathAStar); 
 
 router.post('/validate-qr', validateQR);
-
 
 module.exports = router;

@@ -2,8 +2,6 @@ const cors = require('cors');
 const express = require('express');
 const adminRoutes = require('./routes/admin.route');
 const navigationRoutes = require('./routes/navigation.route');
-const graphConnect = require('./controllers/graph.controller');
-
 const app = express();
 
 app.use(cors({
