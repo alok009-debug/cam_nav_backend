@@ -162,13 +162,13 @@ const getAllLocationsByAdminID = async (req, res) => {
 // GET PUBLIC LOCATIONS
 // ============================================================
 const getPublicLocations = async (req, res) => {
-    const { admin_id } = req.query;
-    const defaultAdminId = admin_id || 12;
+    
+    const admin_id = req.body?.admin_id || 12;
 
     try {
         const [rows] = await pool.query(
             'SELECT locId, name, latitude, longitude, building, admin_id FROM locations WHERE admin_id = ? ORDER BY name',
-            [defaultAdminId]
+            [admin_id]
         );
         res.json(rows);
     } catch (error) {
